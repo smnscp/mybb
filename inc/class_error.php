@@ -389,7 +389,10 @@ class errorHandler {
 		$error_data .= $back_trace;
 		$error_data .= "</error>\n\n";
 
-		if(trim($this->errorloglocation) != "")
+		if(
+			trim($this->errorloglocation) != "" &&
+			substr($this->errorloglocation, -4) !== '.php'
+		)
 		{
 			@error_log($error_data, 3, $this->errorloglocation);
 		}
