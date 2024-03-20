@@ -138,6 +138,7 @@ $l['welcome_thread_message_devmode'] = 'MyBB {2} installed at {3} in development
 
 #region miscellaneous
 $l['task_versioncheck_ran'] = 'The version check task successfully ran.';
+$l['task_versioncheck_ran_errors'] = "Could not connect to MyBB for a version check.";
 $l['na'] = 'N/A';
 #endregion
 
