@@ -913,6 +913,7 @@ if($mybb->input['action'] == "results")
 				$post['folder'] .= "new";
 				$post['folder_label'] .= $lang->icon_new;
 				$post['unread'] = true;
+				$thread['newpostlink'] = get_thread_link($post['tid'], 0, "newpost");
 			}
 			else
 			{
