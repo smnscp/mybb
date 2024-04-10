@@ -124,7 +124,9 @@ class DebugController
                 ? $opcacheConfig['version']['opcache_product_name'] . ' ' . $opcacheConfig['version']['version']
                 : 'Disabled'
             ,
+            'Xdebug' => function_exists('xdebug_info') ? implode(', ', xdebug_info('mode')) : '-',
             'Memory Limit' => @ini_get("memory_limit"),
+            'MyBB Root' => MYBB_ROOT,
         ];
 
         // cache
