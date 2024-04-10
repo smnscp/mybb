@@ -291,7 +291,7 @@ function getRequirementsCheckResults(): array
 
     $checks = [
         'php_version' => function () use ($lang) {
-            $minimumVersion = '8.1';
+            $minimumVersion = '8.2';
 
             return [
                 'result' => version_compare(PHP_VERSION, $minimumVersion, '>='),

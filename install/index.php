@@ -19,7 +19,7 @@ p { font-size: initial; }
 <!--
 */
 
-define('MINIMUM_PHP_VERSION', '8.1');
+define('MINIMUM_PHP_VERSION', '8.2');
 
 define('IN_MYBB', 1);
 define('IN_INSTALL', 1);
