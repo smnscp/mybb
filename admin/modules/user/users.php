@@ -1836,7 +1836,7 @@ if($mybb->input['action'] == "referrers")
 	$query = $db->simple_select("adminviews", "*", "type='user' AND (vid='{$default_view}' OR uid=0)", array("order_by" => "uid", "order_dir" => "desc"));
 	$admin_view = $db->fetch_array($query);
 
-	if($mybb->input['type'])
+	if(!empty($mybb->input['type']))
 	{
 		$admin_view['view_type'] = $mybb->input['type'];
 	}

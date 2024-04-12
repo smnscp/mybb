@@ -1660,7 +1660,7 @@ if($mybb->input['action'] == "resetpassword")
 		require_once MYBB_ROOT.'inc/datahandlers/user.php';
 		$userhandler = new UserDataHandler('update');
 
-		while(!$userhandler->verify_password())
+		do
 		{
 			$password = random_str($password_length, $mybb->settings['requirecomplexpasswords']);
 
@@ -1673,13 +1673,13 @@ if($mybb->input['action'] == "resetpassword")
 
 			$userhandler->set_validated(true);
 			$userhandler->errors = array();
-		}
+		} while(!$userhandler->verify_password());
 
 		$userhandler->update_user();
 
 		$logindetails = array(
 			'salt'		=> $userhandler->data['salt'],
-			'password'	=> $userhandler->data['saltedpw'],
+			'password'	=> $userhandler->data['password'],
 			'loginkey'	=> $userhandler->data['loginkey'],
 		);
 
