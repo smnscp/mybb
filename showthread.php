@@ -1326,6 +1326,19 @@ if($mybb->input['action'] == "thread")
 				$thread['notes'] = my_substr($thread['notes'], 0, 200)."... {$viewnotes}";
 			}
 
+			if(!isset($collapsedthead['threadnotes']))
+			{
+				$collapsedthead['threadnotes'] = '';
+			}
+			if(!isset($collapsedimg['threadnotes']))
+			{
+				$collapsedimg['threadnotes'] = '';
+			}
+			if(!isset($collapsed['threadnotes_e']))
+			{
+				$collapsed['threadnotes_e'] = '';
+			}
+
 			$expaltext = (in_array("threadnotes", $collapse)) ? $lang->expcol_expand : $lang->expcol_collapse;
 			eval("\$threadnotesbox = \"".$templates->get("showthread_threadnotes")."\";");
 		}
