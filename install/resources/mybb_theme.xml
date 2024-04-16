@@ -11376,7 +11376,7 @@ if(use_xmlhttprequest == "1")
 <!-- jeditable (jquery) -->
 <script type="text/javascript" src="{$mybb->asset_url}/jscripts/report.js?ver=1820"></script>
 <script src="{$mybb->asset_url}/jscripts/jeditable/jeditable.min.js"></script>
-<script type="text/javascript" src="{$mybb->asset_url}/jscripts/thread.js?ver=1823"></script>
+<script type="text/javascript" src="{$mybb->asset_url}/jscripts/thread.js?ver=1827"></script>
 </head>
 <body>
 	{$header}
