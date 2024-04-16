@@ -40,6 +40,12 @@ $fid = $mybb->get_input('fid', MyBB::INPUT_INT);
 $pmid = $mybb->get_input('pmid', MyBB::INPUT_INT);
 $modal = $mybb->get_input('modal', MyBB::INPUT_INT);
 
+if($mybb->user['uid'] == 0)
+{
+	error_no_permission();
+}
+
+
 if($pid)
 {
 	$post = get_post($pid);
@@ -420,7 +426,7 @@ switch($mybb->input['action'])
 			$method_selected = array('move' => 'checked="checked"', 'redirect' => '', 'copy' => '');
 
 			$mybb->input['delayedmoderation']['redirect_expire'] = '';
-			$mybb->input['delayedmoderation']['subject'] = $thread['subject'];
+			$mybb->input['delayedmoderation']['subject'] = isset($thread['subject']) ? $thread['subject'] : '';
 			$mybb->input['delayedmoderation']['threadurl'] = '';
 
 			$forumselect = build_forum_jump("", $fid, 1, '', 0, true, '', "delayedmoderation[new_forum]");
@@ -532,10 +538,10 @@ switch($mybb->input['action'])
 					");
 			}
 		}
-		
+
 		while($delayedmod = $db->fetch_array($query))
 		{
-			$delayedmod['dateline'] = my_date("jS M Y, {$mybb->settings['timeformat']}", $delayedmod['delaydateline']);
+			$delayedmod['dateline'] = my_date('normal', $delayedmod['delaydateline'], "", 2);
 			$delayedmod['username'] = htmlspecialchars_uni($delayedmod['username']);
 			$delayedmod['profilelink'] = build_profile_link($delayedmod['username'], $delayedmod['uid']);
 			$delayedmod['action'] = $actions[$delayedmod['type']];
@@ -1014,7 +1020,7 @@ switch($mybb->input['action'])
 
 		$plugins->run_hooks("moderation_move");
 
-		$forumselect = build_forum_jump("", '', 1, '', 0, true, '', "moveto");
+		$forumselect = build_forum_jump("", $fid, 1, '', 0, true, '', "moveto");
 		eval("\$movethread = \"".$templates->get("moderation_move")."\";");
 		output_page($movethread);
 		break;
@@ -1136,7 +1142,7 @@ switch($mybb->input['action'])
 			$modactions = '';
 			while($modaction = $db->fetch_array($query))
 			{
-				$modaction['dateline'] = my_date("jS M Y, G:i", $modaction['dateline']);
+				$modaction['dateline'] = my_date('relative', $modaction['dateline']);
 				$modaction['username'] = htmlspecialchars_uni($modaction['username']);
 				$modaction['profilelink'] = build_profile_link($modaction['username'], $modaction['uid']);
 				$modaction['action'] = htmlspecialchars_uni($modaction['action']);
@@ -1226,7 +1232,7 @@ switch($mybb->input['action'])
 		$delayedmods = '';
 		while($delayedmod = $db->fetch_array($query))
 		{
-			$delayedmod['dateline'] = my_date("jS M Y, G:i", $delayedmod['delaydateline']);
+			$delayedmod['dateline'] = my_date('normal', $delayedmod['delaydateline'], "", 2);
 			$delayedmod['username'] = htmlspecialchars_uni($delayedmod['username']);
 			$delayedmod['profilelink'] = build_profile_link($delayedmod['username'], $delayedmod['uid']);
 			$delayedmod['action'] = $actions[$delayedmod['type']];
@@ -1541,7 +1547,7 @@ switch($mybb->input['action'])
 			FROM ".TABLE_PREFIX."posts p
 			LEFT JOIN ".TABLE_PREFIX."users u ON (p.uid=u.uid)
 			WHERE tid='$tid'
-			ORDER BY dateline ASC
+			ORDER BY dateline ASC, pid ASC
 		");
 
 		$numposts = $db->num_rows($query);
@@ -2334,8 +2340,8 @@ switch($mybb->input['action'])
 			SELECT p.*, u.*
 			FROM ".TABLE_PREFIX."posts p
 			LEFT JOIN ".TABLE_PREFIX."users u ON (p.uid=u.uid)
-			WHERE pid IN (".implode($posts, ",").")
-			ORDER BY dateline ASC
+			WHERE pid IN (".implode(",", $posts).")
+			ORDER BY dateline ASC, pid ASC
 		");
 		$altbg = "trow1";
 		while($post = $db->fetch_array($query))
@@ -2670,6 +2676,9 @@ switch($mybb->input['action'])
 			clearinline($tid, 'thread');
 		}
 		$forumselect = build_forum_jump("", $fid, 1, '', 0, true, '', "moveto");
+
+		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
+
 		eval("\$moveposts = \"".$templates->get("moderation_inline_moveposts")."\";");
 		output_page($moveposts);
 		break;
@@ -2693,12 +2702,12 @@ switch($mybb->input['action'])
 			preg_match("#thread-([0-9]+)?#i", $mybb->input['threadurl'], $threadmatch);
 			preg_match("#post-([0-9]+)?#i", $mybb->input['threadurl'], $postmatch);
 
-			if($threadmatch[1])
+			if(!empty($threadmatch[1]))
 			{
 				$parameters['tid'] = $threadmatch[1];
 			}
 
-			if($postmatch[1])
+			if(!empty($postmatch[1]))
 			{
 				$parameters['pid'] = $postmatch[1];
 			}
@@ -3017,7 +3026,7 @@ switch($mybb->input['action'])
 
 		$uid = $mybb->get_input('uid', MyBB::INPUT_INT);
 		$user = get_user($uid);
-		if(!$user['uid'] || !purgespammer_show($user['postnum'], $user['usergroup'], $user['uid']))
+		if(!$user || !purgespammer_show($user['postnum'], $user['usergroup'], $user['uid']))
 		{
 			error($lang->purgespammer_invalid_user);
 		}
@@ -3067,25 +3076,27 @@ switch($mybb->input['action'])
 				}
 
 				// Add the IP's to the banfilters
-				foreach(array($user['regip'], $user['lastip']) as $ip)
+				if($mybb->settings['purgespammerbanip'] == 1)
 				{
-					$ip = my_inet_ntop($db->unescape_binary($ip));
-					$query = $db->simple_select("banfilters", "type", "type = 1 AND filter = '".$db->escape_string($ip)."'");
-					if($db->num_rows($query) == 0)
+					foreach(array($user['regip'], $user['lastip']) as $ip)
 					{
-						$insert = array(
-							"filter" => $db->escape_string($ip),
-							"type" => 1,
-							"dateline" => TIME_NOW
-						);
-						$db->insert_query("banfilters", $insert);
+						$ip = my_inet_ntop($db->unescape_binary($ip));
+						$query = $db->simple_select("banfilters", "type", "type = 1 AND filter = '".$db->escape_string($ip)."'");
+						if($db->num_rows($query) == 0)
+						{
+							$insert = array(
+								"filter" => $db->escape_string($ip),
+								"type" => 1,
+								"dateline" => TIME_NOW
+							);
+							$db->insert_query("banfilters", $insert);
+						}
 					}
 				}
 
 				// Clear the profile
 				$userhandler->clear_profile($uid, $mybb->settings['purgespammerbangroup']);
 
-				$cache->update_banned();
 				$cache->update_bannedips();
 				$cache->update_awaitingactivation();
 
@@ -3159,10 +3170,10 @@ switch($mybb->input['action'])
 
 				$lang->confirm_execute_tool_desc = $lang->sprintf($lang->confirm_execute_tool_desc, htmlspecialchars_uni($tool['name']));
 
-				$action = $mybb->input['action'];
-				$modtype = $mybb->get_input('modtype');
-				$inlinetype = $mybb->get_input('inlinetype');
-				$searchid = $mybb->get_input('searchid');
+				$action = $mybb->get_input('action', MyBB::INPUT_INT);
+				$modtype = htmlspecialchars_uni($mybb->get_input('modtype'));
+				$inlinetype = htmlspecialchars_uni($mybb->get_input('inlinetype'));
+				$searchid = htmlspecialchars_uni($mybb->get_input('searchid'));
 				$url = htmlspecialchars_uni($mybb->get_input('url'));
 				$plugins->run_hooks('moderation_confirmation');
 
@@ -3207,7 +3218,7 @@ switch($mybb->input['action'])
 					clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
 					$lang->redirect_customtool_search = $lang->sprintf($lang->redirect_customtool_search, $tool['name']);
 					$return_url = htmlspecialchars_uni($mybb->get_input('url'));
-					redirect($return_url, $lang->redirect_customtool_search);
+					moderation_redirect($return_url, $lang->redirect_customtool_search);
 				}
 				else
 				{
@@ -3268,8 +3279,7 @@ switch($mybb->input['action'])
 				// Get threads which are associated with the posts
 				$tids = array();
 				$options = array(
-					'order_by' => 'dateline',
-					'order_dir' => 'asc'
+					'order_by' => 'dateline, pid',
 				);
 				$query = $db->simple_select("posts", "DISTINCT tid, dateline", "pid IN (".implode(',',$pids).")", $options);
 				while($row = $db->fetch_array($query))
@@ -3285,7 +3295,7 @@ switch($mybb->input['action'])
 					clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
 					$lang->redirect_customtool_search = $lang->sprintf($lang->redirect_customtool_search, $tool['name']);
 					$return_url = htmlspecialchars_uni($mybb->get_input('url'));
-					redirect($return_url, $lang->redirect_customtool_search);
+					moderation_redirect($return_url, $lang->redirect_customtool_search);
 				}
 				else
 				{
@@ -3534,7 +3544,18 @@ function moderation_redirect($url, $message="", $title="")
 	global $mybb;
 	if(!empty($mybb->input['url']))
 	{
-		redirect(htmlentities($mybb->input['url']), $message, $title);
+		$url = htmlentities($mybb->input['url']);
 	}
+
+	if(my_strpos($url, $mybb->settings['bburl'].'/') !== 0)
+	{
+		if(my_strpos($url, '/') === 0)
+		{
+			$url = my_substr($url, 1);
+		}
+		$url_segments = explode('/', $url);
+		$url = $mybb->settings['bburl'].'/'.end($url_segments);
+	}
+
 	redirect($url, $message, $title);
 }

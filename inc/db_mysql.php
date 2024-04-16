@@ -74,6 +74,11 @@ class DB_MySQL implements DB_Base
 	public $current_link;
 
 	/**
+	 * @var array
+	 */
+	public $connections = array();
+
+	/**
 	 * The database name.
 	 *
 	 * @var string
@@ -178,7 +183,10 @@ class DB_MySQL implements DB_Base
 			}
 		}
 
-		$this->db_encoding = $config['encoding'];
+		if(isset($config['encoding']))
+		{
+			$this->db_encoding = $config['encoding'];
+		}
 
 		// Actually connect to the specified servers
 		foreach(array('read', 'write') as $type)
@@ -191,7 +199,7 @@ class DB_MySQL implements DB_Base
 			if(array_key_exists('hostname', $connections[$type]))
 			{
 				$details = $connections[$type];
-				unset($connections);
+				unset($connections[$type]);
 				$connections[$type][] = $details;
 			}
 
@@ -485,7 +493,11 @@ class DB_MySQL implements DB_Base
 		if($row === false)
 		{
 			$array = $this->fetch_array($query);
-			return $array[$field];
+			if($array !== null)
+			{
+				return $array[$field];
+			}
+			return null;
 		}
 		else
 		{
@@ -1042,7 +1054,7 @@ class DB_MySQL implements DB_Base
 	 */
 	function escape_string_like($string)
 	{
-		return $this->escape_string(str_replace(array('%', '_') , array('\\%' , '\\_') , $string));
+		return $this->escape_string(str_replace(array('\\', '%', '_') , array('\\\\', '\\%' , '\\_') , $string));
 	}
 
 	/**
@@ -1412,7 +1424,7 @@ class DB_MySQL implements DB_Base
 			$default = '';
 		}
 
-		return (bool)$this->write_query("ALTER TABLE {$this->table_prefix}{$table} MODIFY `{$column}` {$new_definition} {$not_null}");
+		return (bool)$this->write_query("ALTER TABLE {$this->table_prefix}{$table} MODIFY `{$column}` {$new_definition} {$not_null} {$default}");
 	}
 
 	/**

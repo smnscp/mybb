@@ -155,7 +155,7 @@ var Thread = {
 			}
 		}
 
-		if(typeof MyBBEditor != 'undefined')
+		if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null)
 		{
 			MyBBEditor.insert(json.message);
 		}
@@ -213,6 +213,7 @@ var Thread = {
 				rows: 12,
 				submit: lang.save_changes,
 				cancel: lang.cancel_edit,
+				placeholder: "",
 				event: "edit" + pid, // Triggered by the event "edit_[pid]",
 				onblur: "ignore",
 				dataType: "json",

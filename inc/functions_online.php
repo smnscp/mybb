@@ -33,7 +33,7 @@ function fetch_wol_activity($location, $nopermission=false)
 		$filename = my_substr($split_loc[0], -my_strpos(strrev($split_loc[0]), "/"));
 	}
 	$parameters = array();
-	if($split_loc[1])
+	if(isset($split_loc[1]))
 	{
 		$temp = explode("&amp;", my_substr($split_loc[1], 1));
 		foreach($temp as $param)
@@ -218,7 +218,7 @@ function fetch_wol_activity($location, $nopermission=false)
 			{
 				$parameters['action'] = '';
 			}
-			$accepted_parameters = array("markread", "help", "buddypopup", "smilies", "syndication", "imcenter", "dstswitch");
+			$accepted_parameters = array("markread", "help", "buddypopup", "smilies", "syndication", "dstswitch");
 			if($parameters['action'] == "whoposted")
 			{
 				if(!isset($parameters['tid']))
@@ -352,7 +352,7 @@ function fetch_wol_activity($location, $nopermission=false)
 					}
 				}
 
-				if(!$user_activity['activity'])
+				if(empty($user_activity['activity']))
 				{
 					$user_activity['activity'] = "showresults";
 				}
@@ -400,6 +400,10 @@ function fetch_wol_activity($location, $nopermission=false)
 			$user_activity['activity'] = "report";
 			break;
 		case "reputation":
+            if(!isset($parameters['action']))
+            {
+                $parameters['action'] = '';
+            }
 			if(!isset($parameters['uid']))
 			{
 				$parameters['uid'] = 0;
@@ -881,9 +885,6 @@ function build_friendly_wol_location($user_activity)
 		case "misc_syndication":
 			$location_name = $lang->viewing_syndication;
 			break;
-		case "misc_imcenter":
-			$location_name = $lang->viewing_imcenter;
-			break;
 		// modcp.php functions
 		case "modcp_modlogs":
 			$location_name = $lang->viewing_modlogs;
@@ -1143,7 +1144,7 @@ function build_wol_row($user)
 		if($user['invisible'] != 1 || $mybb->usergroup['canviewwolinvis'] == 1 || $user['uid'] == $mybb->user['uid'])
 		{
 			// Append an invisible mark if the user is invisible
-			if($user['invisible'] == 1)
+			if($user['invisible'] == 1 && $mybb->usergroup['canbeinvisible'] == 1)
 			{
 				$invisible_mark = "*";
 			}

@@ -67,7 +67,7 @@ if($report_type == 'post')
 		// Check for a valid forum
 		$forum = get_forum($post['fid']);
 
-		if(!isset($forum['fid']))
+		if(!$forum)
 		{
 			$error = $lang->sprintf($lang->error_invalid_report, $report_type);
 		}
@@ -77,16 +77,17 @@ if($report_type == 'post')
 			$button = '#post_'.$id.' .postbit_report';
 		}
 
-		// Password protected forums ......... yhummmmy!
 		$id3 = $forum['fid'];
-		check_forum_password($forum['parentlist']);
+
+		// Password protected forums ......... yhummmmy!
+		check_forum_password($forum['fid']);
 	}
 }
 else if($report_type == 'profile')
 {
 	$user = get_user($mybb->get_input('pid', MyBB::INPUT_INT));
 
-	if(!isset($user['uid']))
+	if(!$user)
 	{
 		$error = $lang->sprintf($lang->error_invalid_report, $report_type);
 	}
@@ -120,13 +121,13 @@ else if($report_type == 'reputation')
 	}
 }
 
+$plugins->run_hooks("report_type");
+
 $permissions = user_permissions($checkid);
 if(empty($permissions['canbereported']))
 {
 	$error = $lang->sprintf($lang->error_invalid_report, $report_type);
 }
-
-$plugins->run_hooks("report_type");
 
 // Check for an existing report
 if(!empty($report_type_db))
@@ -192,6 +193,7 @@ if(empty($error) && $verified == true && $mybb->input['action'] == "do_report" &
 			$reason = $db->fetch_array($query);
 
 			$new_report['reasonid'] = $reason['rid'];
+			$new_report['reason'] = '';
 
 			if($reason['extra'])
 			{
@@ -273,7 +275,7 @@ if(!$mybb->input['action'])
 		}
 	}
 
-	if($mybb->input['no_modal'])
+	if($mybb->get_input('no_modal'))
 	{
 		echo $report_reasons;
 		exit;

@@ -32,6 +32,7 @@ $templatelist .= ",usercp_addsubscription_thread,forumdisplay_password,forumdisp
 
 require_once "./global.php";
 require_once MYBB_ROOT."inc/functions_post.php";
+require_once MYBB_ROOT."inc/functions_search.php";
 require_once MYBB_ROOT."inc/functions_user.php";
 require_once MYBB_ROOT."inc/class_parser.php";
 $parser = new postParser;
@@ -44,19 +45,27 @@ if($mybb->user['uid'] == 0 || $mybb->usergroup['canusercp'] == 0)
 	error_no_permission();
 }
 
-if(!$mybb->user['pmfolders'])
-{
-	$mybb->user['pmfolders'] = '1**$%%$2**$%%$3**$%%$4**';
-	$db->update_query('users', array('pmfolders' => $mybb->user['pmfolders']), "uid = {$mybb->user['uid']}");
-}
-
 $errors = '';
 
 $mybb->input['action'] = $mybb->get_input('action');
 
 usercp_menu();
 
-$server_http_referer = htmlentities($_SERVER['HTTP_REFERER']);
+$server_http_referer = '';
+if(isset($_SERVER['HTTP_REFERER']))
+{
+	$server_http_referer = htmlentities($_SERVER['HTTP_REFERER']);
+
+	if(my_strpos($server_http_referer, $mybb->settings['bburl'].'/') !== 0)
+	{
+		if(my_strpos($server_http_referer, '/') === 0)
+		{
+			$server_http_referer = my_substr($server_http_referer, 1);
+		}
+		$url_segments = explode('/', $server_http_referer);
+		$server_http_referer = $mybb->settings['bburl'].'/'.end($url_segments);
+	}
+}
 
 $plugins->run_hooks("usercp_start");
 if($mybb->input['action'] == "do_editsig" && $mybb->request_method == "post")
@@ -145,6 +154,8 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
+	$user = array();
+
 	$plugins->run_hooks("usercp_do_profile_start");
 
 	if($mybb->get_input('away', MyBB::INPUT_INT) == 1 && $mybb->settings['allowaway'] != 0)
@@ -207,7 +218,7 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 	require_once MYBB_ROOT."inc/datahandlers/user.php";
 	$userhandler = new UserDataHandler("update");
 
-	$user = array(
+	$user = array_merge($user, array(
 		"uid" => $mybb->user['uid'],
 		"postnum" => $mybb->user['postnum'],
 		"usergroup" => $mybb->user['usergroup'],
@@ -216,7 +227,7 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 		"birthdayprivacy" => $mybb->get_input('birthdayprivacy'),
 		"away" => $away,
 		"profile_fields" => $mybb->get_input('profile_fields', MyBB::INPUT_ARRAY)
-	);
+	));
 	foreach(array('icq', 'skype', 'google') as $cfield)
 	{
 		$csetting = 'allow'.$cfield.'field';
@@ -233,10 +244,20 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 		if($cfield == 'icq')
 		{
 			$user[$cfield] = $mybb->get_input($cfield, 1);
+
+			if(my_strlen($user[$cfield]) > 10)
+			{
+				error($lang->contact_field_icqerror);
+			}
 		}
 		else
 		{
 			$user[$cfield] = $mybb->get_input($cfield);
+
+			if(my_strlen($user[$cfield]) > 75)
+			{
+				error($lang->contact_field_error);
+			}
 		}
 	}
 
@@ -264,9 +285,15 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 		$raw_errors = $userhandler->get_errors();
 
 		// Set to stored value if invalid
-		if(array_key_exists("invalid_birthday_privacy", $raw_errors))
+		if(array_key_exists("invalid_birthday_privacy", $raw_errors) || array_key_exists("conflicted_birthday_privacy", $raw_errors))
 		{
 			$mybb->input['birthdayprivacy'] = $mybb->user['birthdayprivacy'];
+			$bday = explode("-", $mybb->user['birthday']);
+
+			if(isset($bday[2]))
+			{
+				$mybb->input['bday3'] = $bday[2];
+			}
 		}
 
 		$errors = inline_error($errors);
@@ -299,10 +326,10 @@ if($mybb->input['action'] == "profile")
 		{
 			$bday[1] = 0;
 		}
-		if(!isset($bday[2]))
-		{
-			$bday[2] = '';
-		}
+	}
+	if(!isset($bday[2]) || $bday[2] == 0)
+	{
+		$bday[2] = '';
 	}
 
 	$plugins->run_hooks("usercp_profile_start");
@@ -400,6 +427,7 @@ if($mybb->input['action'] == "profile")
 		eval('$contactfields = "'.$templates->get('usercp_profile_contact_fields').'";');
 	}
 
+	$awaysection = '';
 	if($mybb->settings['allowaway'] != 0)
 	{
 		$awaycheck = array('', '');
@@ -485,6 +513,8 @@ if($mybb->input['action'] == "profile")
 				continue;
 			}
 
+			$userfield = $code = $select = $val = $options = $expoptions = $useropts = '';
+			$seloptions = array();
 			$profilefield['type'] = htmlspecialchars_uni($profilefield['type']);
 			$profilefield['name'] = htmlspecialchars_uni($profilefield['name']);
 			$profilefield['description'] = htmlspecialchars_uni($profilefield['description']);
@@ -499,7 +529,6 @@ if($mybb->input['action'] == "profile")
 				$options = array();
 			}
 			$field = "fid{$profilefield['fid']}";
-			$select = '';
 			if($errors)
 			{
 				if(!isset($mybb->input['profile_fields'][$field]))
@@ -656,13 +685,6 @@ if($mybb->input['action'] == "profile")
 				eval("\$customfields .= \"".$templates->get("usercp_profile_customfield")."\";");
 			}
 			$altbg = alt_trow();
-			$code = "";
-			$select = "";
-			$val = "";
-			$options = "";
-			$expoptions = "";
-			$useropts = "";
-			$seloptions = array();
 		}
 	}
 	if($customfields)
@@ -725,6 +747,7 @@ if($mybb->input['action'] == "profile")
 		$customtitle = "";
 	}
 
+	$website = '';
 	if($mybb->usergroup['canchangewebsite'] == 1)
 	{
 		eval("\$website = \"".$templates->get("usercp_profile_website")."\";");
@@ -741,13 +764,15 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
+	$user = array();
+
 	$plugins->run_hooks("usercp_do_options_start");
 
 	// Set up user handler.
 	require_once MYBB_ROOT."inc/datahandlers/user.php";
 	$userhandler = new UserDataHandler("update");
 
-	$user = array(
+	$user = array_merge($user, array(
 		"uid" => $mybb->user['uid'],
 		"style" => $mybb->get_input('style', MyBB::INPUT_INT),
 		"dateformat" => $mybb->get_input('dateformat', MyBB::INPUT_INT),
@@ -756,7 +781,7 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 		"language" => $mybb->get_input('language'),
 		'usergroup'	=> $mybb->user['usergroup'],
 		'additionalgroups'	=> $mybb->user['additionalgroups']
-	);
+	));
 
 	$user['options'] = array(
 		"allownotices" => $mybb->get_input('allownotices', MyBB::INPUT_INT),
@@ -813,8 +838,6 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 
 if($mybb->input['action'] == "options")
 {
-	$plugins->run_hooks("usercp_options_start");
-
 	if($errors != '')
 	{
 		$user = $mybb->input;
@@ -823,6 +846,8 @@ if($mybb->input['action'] == "options")
 	{
 		$user = $mybb->user;
 	}
+
+	$plugins->run_hooks("usercp_options_start");
 
 	$languages = $lang->get_languages();
 	$board_language = $langoptions = '';
@@ -854,13 +879,20 @@ if($mybb->input['action'] == "options")
 		$allownoticescheck = "";
 	}
 
-	if(isset($user['invisible']) && $user['invisible'] == 1)
+	$canbeinvisible = '';
+
+	// Check usergroup permission before showing invisible check box
+	if($mybb->usergroup['canbeinvisible'] == 1)
 	{
-		$invisiblecheck = "checked=\"checked\"";
-	}
-	else
-	{
-		$invisiblecheck = "";
+		if(isset($user['invisible']) && $user['invisible'] == 1)
+		{
+			$invisiblecheck = "checked=\"checked\"";
+		}
+		else
+		{
+			$invisiblecheck = "";
+		}
+		eval('$canbeinvisible = "'.$templates->get("usercp_options_invisible")."\";");
 	}
 
 	if(isset($user['hideemail']) && $user['hideemail'] == 1)
@@ -1308,6 +1340,7 @@ if($mybb->input['action'] == "do_password" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
+	$user = array();
 	$errors = array();
 
 	$plugins->run_hooks("usercp_do_password_start");
@@ -1321,11 +1354,11 @@ if($mybb->input['action'] == "do_password" && $mybb->request_method == "post")
 		require_once MYBB_ROOT."inc/datahandlers/user.php";
 		$userhandler = new UserDataHandler("update");
 
-		$user = array(
+		$user = array_merge($user, array(
 			"uid" => $mybb->user['uid'],
 			"password" => $mybb->get_input('password'),
 			"password2" => $mybb->get_input('password2')
-		);
+		));
 
 		$userhandler->set_data($user);
 
@@ -1369,11 +1402,14 @@ if($mybb->input['action'] == "do_changename" && $mybb->request_method == "post")
 
 	$errors = array();
 
-	$plugins->run_hooks("usercp_do_changename_start");
 	if($mybb->usergroup['canchangename'] != 1)
 	{
 		error_no_permission();
 	}
+
+	$user = array();
+
+	$plugins->run_hooks("usercp_do_changename_start");
 
 	if(validate_password_from_uid($mybb->user['uid'], $mybb->get_input('password')) == false)
 	{
@@ -1385,10 +1421,10 @@ if($mybb->input['action'] == "do_changename" && $mybb->request_method == "post")
 		require_once MYBB_ROOT."inc/datahandlers/user.php";
 		$userhandler = new UserDataHandler("update");
 
-		$user = array(
+		$user = array_merge($user, array(
 			"uid" => $mybb->user['uid'],
 			"username" => $mybb->get_input('username')
-		);
+		));
 
 		$userhandler->set_data($user);
 
@@ -1401,7 +1437,6 @@ if($mybb->input['action'] == "do_changename" && $mybb->request_method == "post")
 			$userhandler->update_user();
 			$plugins->run_hooks("usercp_do_changename_end");
 			redirect("usercp.php?action=changename", $lang->redirect_namechanged);
-
 		}
 	}
 	if(count($errors) > 0)
@@ -1440,12 +1475,12 @@ if($mybb->input['action'] == "do_subscriptions")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("usercp_do_subscriptions_start");
-
 	if(!isset($mybb->input['check']) || !is_array($mybb->input['check']))
 	{
 		error($lang->no_subscriptions_selected);
 	}
+
+	$plugins->run_hooks("usercp_do_subscriptions_start");
 
 	// Clean input - only accept integers thanks!
 	$mybb->input['check'] = array_map('intval', $mybb->get_input('check', MyBB::INPUT_ARRAY));
@@ -1486,18 +1521,29 @@ if($mybb->input['action'] == "subscriptions")
 	$plugins->run_hooks("usercp_subscriptions_start");
 
 	// Thread visiblity
-	$visible = "AND t.visible != 0";
-	if(is_moderator() == true)
+	$where = array(
+		"s.uid={$mybb->user['uid']}",
+		get_visible_where('t')
+	);
+
+	if($unviewable_forums = get_unviewable_forums(true))
 	{
-		$visible = '';
+		$where[] = "t.fid NOT IN ({$unviewable_forums})";
 	}
+
+	if($inactive_forums = get_inactive_forums())
+	{
+		$where[] = "t.fid NOT IN ({$inactive_forums})";
+	}
+
+	$where = implode(' AND ', $where);
 
 	// Do Multi Pages
 	$query = $db->query("
-		SELECT COUNT(ts.tid) as threads
-		FROM ".TABLE_PREFIX."threadsubscriptions ts
-		LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid = ts.tid)
-		WHERE ts.uid = '".$mybb->user['uid']."' AND t.visible >= 0 {$visible}
+		SELECT COUNT(s.tid) as threads
+		FROM ".TABLE_PREFIX."threadsubscriptions s
+		LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid = s.tid)
+		WHERE {$where}
 	");
 	$threadcount = $db->fetch_field($query, "threads");
 
@@ -1541,7 +1587,7 @@ if($mybb->input['action'] == "subscriptions")
 		FROM ".TABLE_PREFIX."threadsubscriptions s
 		LEFT JOIN ".TABLE_PREFIX."threads t ON (s.tid=t.tid)
 		LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid = t.uid)
-		WHERE s.uid='".$mybb->user['uid']."' and t.visible >= 0 {$visible}
+		WHERE {$where}
 		ORDER BY t.lastpost DESC
 		LIMIT $start, $perpage
 	");
@@ -1549,7 +1595,7 @@ if($mybb->input['action'] == "subscriptions")
 	{
 		$forumpermissions = $fpermissions[$subscription['fid']];
 
-		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $subscription['uid'] != $mybb->user['uid']))
+		if(isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $subscription['uid'] != $mybb->user['uid'])
 		{
 			// Hmm, you don't have permission to view this thread - unsubscribe!
 			$del_subscriptions[] = $subscription['sid'];
@@ -1675,12 +1721,14 @@ if($mybb->input['action'] == "subscriptions")
 
 			if($mybb->settings['threadreadcut'] > 0)
 			{
-				$forum_read = $readforums[$thread['fid']];
-
 				$read_cutoff = TIME_NOW-$mybb->settings['threadreadcut']*60*60*24;
-				if($forum_read == 0 || $forum_read < $read_cutoff)
+				if(empty($readforums[$thread['fid']]) || $readforums[$thread['fid']] < $read_cutoff)
 				{
 					$forum_read = $read_cutoff;
+				}
+				else
+				{
+					$forum_read = $readforums[$thread['fid']];
 				}
 			}
 
@@ -1692,7 +1740,7 @@ if($mybb->input['action'] == "subscriptions")
 
 			if($thread['lastpost'] > $cutoff)
 			{
-				if($thread['lastread'])
+				if(!empty($thread['lastread']))
 				{
 					$lastread = $thread['lastread'];
 				}
@@ -1751,6 +1799,7 @@ if($mybb->input['action'] == "subscriptions")
 
 			// Build last post info
 			$lastpostdate = my_date('relative', $thread['lastpost']);
+			$lastposteruid = $thread['lastposteruid'];
 			if(!$lastposteruid && !$thread['lastposter'])
 			{
 				$lastposter = htmlspecialchars_uni($lang->guest);
@@ -1759,7 +1808,6 @@ if($mybb->input['action'] == "subscriptions")
 			{
 				$lastposter = htmlspecialchars_uni($thread['lastposter']);
 			}
-			$lastposteruid = $thread['lastposteruid'];
 
 			// Don't link to guest's profiles (they have no profile).
 			if($lastposteruid == 0)
@@ -1955,7 +2003,19 @@ if($mybb->input['action'] == "do_addsubscription" && $mybb->get_input('type') !=
 
 	if($mybb->get_input('referrer'))
 	{
-		$url = htmlspecialchars_uni($mybb->get_input('referrer'));
+		$mybb->input['referrer'] = $mybb->get_input('referrer');
+
+		if(my_strpos($mybb->input['referrer'], $mybb->settings['bburl'].'/') !== 0)
+		{
+			if(my_strpos($mybb->input['referrer'], '/') === 0)
+			{
+				$mybb->input['referrer'] = my_substr($mybb->input['url'], 1);
+			}
+			$url_segments = explode('/', $mybb->input['referrer']);
+			$mybb->input['referrer'] = $mybb->settings['bburl'].'/'.end($url_segments);
+		}
+
+		$url = htmlspecialchars_uni($mybb->input['referrer']);
 	}
 	else
 	{
@@ -2063,7 +2123,7 @@ if($mybb->input['action'] == "addsubscription")
 	}
 }
 
-if($mybb->input['action'] == "removesubscription")
+if($mybb->input['action'] == "removesubscription" && ($mybb->request_method == "post" || verify_post_check($mybb->get_input('my_post_key'), true)))
 {
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
@@ -2129,6 +2189,83 @@ if($mybb->input['action'] == "removesubscription")
 	}
 }
 
+// Show remove subscription form when GET method and without valid my_post_key
+if($mybb->input['action'] == "removesubscription")
+{
+	$referrer = '';
+	if($mybb->get_input('type') == "forum")
+	{
+		$forum = get_forum($mybb->get_input('fid', MyBB::INPUT_INT));
+		if(!$forum)
+		{
+			error($lang->error_invalidforum);
+		}
+
+		add_breadcrumb($lang->nav_forumsubscriptions, "usercp.php?action=forumsubscriptions");
+		add_breadcrumb($lang->nav_removesubscription);
+
+		$forumpermissions = forum_permissions($forum['fid']);
+		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
+		{
+			error_no_permission();
+		}
+
+		// check if the forum requires a password to view. If so, we need to show a form to the user
+		check_forum_password($forum['fid']);
+
+		$lang->unsubscribe_from_forum = $lang->sprintf($lang->unsubscribe_from_forum, $forum['name']);
+
+		// Naming of the hook retained for backward compatibility while dropping usercp2.php
+		$plugins->run_hooks("usercp2_removesubscription_display_forum");
+
+		eval("\$remove_forum_subscription = \"".$templates->get("usercp_removesubscription_forum")."\";");
+		output_page($remove_forum_subscription);
+		exit;
+	}
+	else
+	{
+		$thread  = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
+		if(!$thread || $thread['visible'] == -1)
+		{
+			error($lang->error_invalidthread);
+		}
+
+		// Is the currently logged in user a moderator of this forum?
+		$ismod = is_moderator($thread['fid']);
+
+		// Make sure we are looking at a real thread here.
+		if(($thread['visible'] != 1 && $ismod == false) || ($thread['visible'] > 1 && $ismod == true))
+		{
+			error($lang->error_invalidthread);
+		}
+
+		add_breadcrumb($lang->nav_subthreads, "usercp.php?action=subscriptions");
+		add_breadcrumb($lang->nav_removesubscription);
+
+		$forumpermissions = forum_permissions($thread['fid']);
+		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $mybb->user['uid']))
+		{
+			error_no_permission();
+		}
+
+		// check if the forum requires a password to view. If so, we need to show a form to the user
+		check_forum_password($thread['fid']);
+
+		require_once MYBB_ROOT."inc/class_parser.php";
+		$parser = new postParser;
+		$thread['subject'] = $parser->parse_badwords($thread['subject']);
+		$thread['subject'] = htmlspecialchars_uni($thread['subject']);
+		$lang->unsubscribe_from_thread = $lang->sprintf($lang->unsubscribe_from_thread, $thread['subject']);
+
+		// Naming of the hook retained for backward compatibility while dropping usercp2.php
+		$plugins->run_hooks("usercp2_removesubscription_display_thread");
+
+		eval("\$remove_thread_subscription = \"".$templates->get("usercp_removesubscription_thread")."\";");
+		output_page($remove_thread_subscription);
+		exit;
+	}
+}
+
 if($mybb->input['action'] == "removesubscriptions")
 {
 	// Verify incoming POST request
@@ -2173,13 +2310,13 @@ if($mybb->input['action'] == "do_editsig" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("usercp_do_editsig_start");
-
 	// User currently has a suspended signature
 	if($mybb->user['suspendsignature'] == 1 && $mybb->user['suspendsigtime'] > TIME_NOW)
 	{
 		error_no_permission();
 	}
+
+	$plugins->run_hooks("usercp_do_editsig_start");
 
 	if($mybb->get_input('updateposts') == "enable")
 	{
@@ -2277,6 +2414,7 @@ if($mybb->input['action'] == "editsig")
 	else
 	{
 		// User is allowed to edit their signature
+		$smilieinserter = '';
 		if($mybb->settings['sigsmilies'] == 1)
 		{
 			$sigsmilies = $lang->on;
@@ -2310,10 +2448,20 @@ if($mybb->input['action'] == "editsig")
 		{
 			$sigimgcode = $lang->off;
 		}
-		$sig = htmlspecialchars_uni($sig);
-		$lang->edit_sig_note2 = $lang->sprintf($lang->edit_sig_note2, $sigsmilies, $sigmycode, $sigimgcode, $sightml, $mybb->settings['siglength']);
 
-		if($mybb->settings['bbcodeinserter'] != 0 || $mybb->user['showcodebuttons'] != 0)
+		if($mybb->settings['siglength'] == 0)
+		{
+			$siglength = $lang->unlimited;
+		}
+		else
+		{
+			$siglength = $mybb->settings['siglength'];
+		}
+
+		$sig = htmlspecialchars_uni($sig);
+		$lang->edit_sig_note2 = $lang->sprintf($lang->edit_sig_note2, $sigsmilies, $sigmycode, $sigimgcode, $sightml, $siglength);
+
+		if($mybb->settings['sigmycode'] != 0 && $mybb->settings['bbcodeinserter'] != 0 && $mybb->user['showcodebuttons'] != 0)
 		{
 			$codebuttons = build_mycode_inserter("signature");
 		}
@@ -2353,7 +2501,7 @@ if($mybb->input['action'] == "do_avatar" && $mybb->request_method == "post")
 			error_no_permission();
 		}
 		$avatar = upload_avatar();
-		if($avatar['error'])
+		if(!empty($avatar['error']))
 		{
 			$avatar_error = $avatar['error'];
 		}
@@ -2370,6 +2518,10 @@ if($mybb->input['action'] == "do_avatar" && $mybb->request_method == "post")
 			);
 			$db->update_query("users", $updated_avatar, "uid='".$mybb->user['uid']."'");
 		}
+	}
+	elseif(!$mybb->settings['allowremoteavatars'] && !$_FILES['avatarupload']['name']) // missing avatar image
+	{
+		$avatar_error = $lang->error_avatarimagemissing;
 	}
 	elseif($mybb->settings['allowremoteavatars']) // remote avatar
 	{
@@ -2454,6 +2606,12 @@ if($mybb->input['action'] == "do_avatar" && $mybb->request_method == "post")
 						$avatar_error = $lang->error_avatartoobig;
 					}
 				}
+			}
+
+			// Limiting URL string to stay within database limit
+			if(strlen($mybb->input['avatarurl']) > 200)
+			{
+				$avatar_error = $lang->error_avatarurltoolong;
 			}
 
 			if(empty($avatar_error))
@@ -3081,7 +3239,7 @@ if($mybb->input['action'] == "do_editlists")
 			{
 				echo "\$(\"#".$mybb->get_input('manage')."_count\").html(\"0\");\n";
 				echo "\$(\"#buddylink\").remove();\n";
-				
+
 				if($mybb->get_input('manage') == "ignored")
 				{
 					echo "\$(\"#ignore_list\").html(\"<li>{$lang->ignore_list_empty}</li>\");\n";
@@ -3210,7 +3368,6 @@ if($mybb->input['action'] == "editlists")
 
 				eval("\$sent_requests = \"".$templates->get("usercp_editlists_sent_requests", 1, 0)."\";");
 
-				echo $sentrequests;
 				echo $sent_requests."<script type=\"text/javascript\">{$message_js}</script>";
 			}
 			else
@@ -3222,7 +3379,7 @@ if($mybb->input['action'] == "editlists")
 		exit;
 	}
 
-	$received_rows = '';
+	$received_rows = $bgcolor = '';
 	$query = $db->query("
 		SELECT r.*, u.username
 		FROM ".TABLE_PREFIX."buddyrequests r
@@ -3244,7 +3401,7 @@ if($mybb->input['action'] == "editlists")
 
 	eval("\$received_requests = \"".$templates->get("usercp_editlists_received_requests")."\";");
 
-	$sent_rows = '';
+	$sent_rows = $bgcolor = '';
 	$query = $db->query("
 		SELECT r.*, u.username
 		FROM ".TABLE_PREFIX."buddyrequests r
@@ -3291,7 +3448,7 @@ if($mybb->input['action'] == "drafts")
 			LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid=p.tid)
 			LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=t.fid)
 			WHERE p.uid = '{$mybb->user['uid']}' AND p.visible = '-2'
-			ORDER BY p.dateline DESC
+			ORDER BY p.dateline DESC, p.pid DESC
 		");
 
 		while($draft = $db->fetch_array($query))
@@ -3339,14 +3496,17 @@ if($mybb->input['action'] == "do_drafts" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("usercp_do_drafts_start");
 	$mybb->input['deletedraft'] = $mybb->get_input('deletedraft', MyBB::INPUT_ARRAY);
 	if(empty($mybb->input['deletedraft']))
 	{
 		error($lang->no_drafts_selected);
 	}
+
+	$plugins->run_hooks("usercp_do_drafts_start");
+
 	$pidin = array();
 	$tidin = array();
+
 	foreach($mybb->input['deletedraft'] as $id => $val)
 	{
 		if($val == "post")
@@ -3363,6 +3523,10 @@ if($mybb->input['action'] == "do_drafts" && $mybb->request_method == "post")
 		$tidin = implode(",", $tidin);
 		$db->delete_query("threads", "tid IN ($tidin) AND visible='-2' AND uid='".$mybb->user['uid']."'");
 		$tidinp = "OR tid IN ($tidin)";
+	}
+	else
+	{
+		$tidinp = '';
 	}
 	if($pidin || $tidinp)
 	{
@@ -3384,10 +3548,11 @@ if($mybb->input['action'] == "do_drafts" && $mybb->request_method == "post")
 
 if($mybb->input['action'] == "usergroups")
 {
-	$plugins->run_hooks("usercp_usergroups_start");
 	$ingroups = ",".$mybb->user['usergroup'].",".$mybb->user['additionalgroups'].",".$mybb->user['displaygroup'].",";
 
 	$usergroups = $mybb->cache->read('usergroups');
+
+	$plugins->run_hooks("usercp_usergroups_start");
 
 	// Changing our display group
 	if($mybb->get_input('displaygroup', MyBB::INPUT_INT))
@@ -3416,7 +3581,7 @@ if($mybb->input['action'] == "usergroups")
 	if($mybb->get_input('leavegroup', MyBB::INPUT_INT))
 	{
 		// Verify incoming POST request
-		verify_post_check($mybb->input['my_post_key']);
+		verify_post_check($mybb->get_input('my_post_key'));
 
 		if(my_strpos($ingroups, ",".$mybb->get_input('leavegroup', MyBB::INPUT_INT).",") === false)
 		{
@@ -3478,7 +3643,7 @@ if($mybb->input['action'] == "usergroups")
 		$query = $db->simple_select("joinrequests", "*", "uid='".$mybb->user['uid']."' AND gid='".$mybb->get_input('joingroup', MyBB::INPUT_INT)."'");
 		$joinrequest = $db->fetch_array($query);
 
-		if($joinrequest['rid'])
+		if($joinrequest)
 		{
 			error($lang->already_sent_join_request);
 		}
@@ -3486,7 +3651,7 @@ if($mybb->input['action'] == "usergroups")
 		if($mybb->get_input('do') == "joingroup" && $usergroup['type'] == 4)
 		{
 			$reasonlength = my_strlen($mybb->get_input('reason'));
-			
+
 			if($reasonlength > 250) // Reason field is varchar(250) in database
 			{
 				error($lang->sprintf($lang->joinreason_too_long, ($reasonlength - 250)));
@@ -3554,7 +3719,7 @@ if($mybb->input['action'] == "usergroups")
 
 		$query = $db->simple_select("joinrequests", "*", "uid='".$mybb->user['uid']."' AND gid='".$mybb->get_input('acceptinvite', MyBB::INPUT_INT)."' AND invite='1'");
 		$joinrequest = $db->fetch_array($query);
-		if($joinrequest['rid'])
+		if($joinrequest)
 		{
 			join_usergroup($mybb->user['uid'], $mybb->get_input('acceptinvite', MyBB::INPUT_INT));
 			$db->delete_query("joinrequests", "uid='{$mybb->user['uid']}' AND gid='".$mybb->get_input('acceptinvite', MyBB::INPUT_INT)."'");
@@ -3625,7 +3790,11 @@ if($mybb->input['action'] == "usergroups")
 	$usergroup = $usergroups[$mybb->user['usergroup']];
 	$usergroup['title'] = htmlspecialchars_uni($usergroup['title']);
 	$usergroup['usertitle'] = htmlspecialchars_uni($usergroup['usertitle']);
-	$usergroup['description'] = htmlspecialchars_uni($usergroup['description']);
+	if($usergroup['description'])
+	{
+		$usergroup['description'] = htmlspecialchars_uni($usergroup['description']);
+		eval("\$description = \"".$templates->get("usercp_usergroups_memberof_usergroup_description")."\";");
+	}
 	eval("\$leavelink = \"".$templates->get("usercp_usergroups_memberof_usergroup_leaveprimary")."\";");
 	$trow = alt_trow();
 	if($usergroup['candisplaygroup'] == 1 && $usergroup['gid'] == $mybb->user['displaygroup'])
@@ -3645,7 +3814,14 @@ if($mybb->input['action'] == "usergroups")
 	$showmemberof = false;
 	if($mybb->user['additionalgroups'])
 	{
-		$query = $db->simple_select("usergroups", "*", "gid IN (".$mybb->user['additionalgroups'].") AND gid !='".$mybb->user['usergroup']."'", array('order_by' => 'title'));
+		$additionalgroups = implode(
+			',',
+			array_map(
+				'intval',
+				explode(',', $mybb->user['additionalgroups'])
+			)
+		);
+		$query = $db->simple_select("usergroups", "*", "gid IN (".$additionalgroups.") AND gid !='".$mybb->user['usergroup']."'", array('order_by' => 'title'));
 		while($usergroup = $db->fetch_array($query))
 		{
 			$showmemberof = true;
@@ -3700,7 +3876,14 @@ if($mybb->input['action'] == "usergroups")
 	$existinggroups = $mybb->user['usergroup'];
 	if($mybb->user['additionalgroups'])
 	{
-		$existinggroups .= ",".$mybb->user['additionalgroups'];
+		$additionalgroups = implode(
+			',',
+			array_map(
+				'intval',
+				explode(',', $mybb->user['additionalgroups'])
+			)
+		);
+		$existinggroups .= ",".$additionalgroups;
 	}
 
 	$joinablegroups = $joinablegrouplist = '';
@@ -3782,13 +3965,14 @@ if($mybb->input['action'] == "usergroups")
 
 if($mybb->input['action'] == "attachments")
 {
-	$plugins->run_hooks("usercp_attachments_start");
 	require_once MYBB_ROOT."inc/functions_upload.php";
 
 	if($mybb->settings['enableattachments'] == 0)
 	{
 		error($lang->attachments_disabled);
 	}
+
+	$plugins->run_hooks("usercp_attachments_start");
 
 	// Get unviewable forums
 	$f_perm_sql = '';
@@ -3805,10 +3989,6 @@ if($mybb->input['action'] == "attachments")
 
 	$attachments = '';
 
-	$query = $db->simple_select("attachments", "SUM(filesize) AS ausage, COUNT(aid) AS acount", "uid='".$mybb->user['uid']."'");
-	$usage = $db->fetch_array($query);
-	$totalattachments = $usage['acount'];
-
 	// Pagination
 	if(!$mybb->settings['threadsperpage'] || (int)$mybb->settings['threadsperpage'] < 1)
 	{
@@ -3821,12 +4001,6 @@ if($mybb->input['action'] == "attachments")
 	if($page > 0)
 	{
 		$start = ($page-1) * $perpage;
-		$pages = ceil($totalattachments / $perpage);
-		if($page > $pages)
-		{
-			$start = 0;
-			$page = 1;
-		}
 	}
 	else
 	{
@@ -3843,10 +4017,10 @@ if($mybb->input['action'] == "attachments")
 		LEFT JOIN ".TABLE_PREFIX."posts p ON (a.pid=p.pid)
 		LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid=p.tid)
 		WHERE a.uid='".$mybb->user['uid']."' {$f_perm_sql}
-		ORDER BY p.dateline DESC LIMIT {$start}, {$perpage}
+		ORDER BY p.dateline DESC, p.pid DESC LIMIT {$start}, {$perpage}
 	");
 
-	$bandwidth = $totaldownloads = 0;
+	$bandwidth = $totaldownloads = $totalusage = $totalattachments = $processedattachments = 0;
 	while($attachment = $db->fetch_array($query))
 	{
 		if($attachment['dateline'] && $attachment['tid'])
@@ -3869,15 +4043,34 @@ if($mybb->input['action'] == "attachments")
 			// Add to bandwidth total
 			$bandwidth += ($attachment['filesize'] * $attachment['downloads']);
 			$totaldownloads += $attachment['downloads'];
+			$totalusage += $attachment['filesize'];
+			++$totalattachments;
 		}
 		else
 		{
 			// This little thing delets attachments without a thread/post
 			remove_attachment($attachment['pid'], $attachment['posthash'], $attachment['aid']);
 		}
+		++$processedattachments;
 	}
 
-	$totalusage = $usage['ausage'];
+	$multipage = '';
+	if($processedattachments >= $perpage || $page > 1)
+	{
+		$query = $db->query("
+			SELECT SUM(a.filesize) AS ausage, COUNT(a.aid) AS acount
+			FROM ".TABLE_PREFIX."attachments a
+			LEFT JOIN ".TABLE_PREFIX."posts p ON (a.pid=p.pid)
+			LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid=p.tid)
+			WHERE a.uid='".$mybb->user['uid']."' {$f_perm_sql}
+		");
+		$usage = $db->fetch_array($query);
+		$totalusage = $usage['ausage'];
+		$totalattachments = $usage['acount'];
+
+		$multipage = multipage($totalattachments, $perpage, $page, "usercp.php?action=attachments");
+	}
+
 	$friendlyusage = get_friendly_size((int)$totalusage);
 	if($mybb->usergroup['attachquota'])
 	{
@@ -3892,13 +4085,15 @@ if($mybb->input['action'] == "attachments")
 		$usagenote = $lang->sprintf($lang->attachments_usage, $friendlyusage, $totalattachments);
 	}
 
-	$multipage = multipage($totalattachments, $perpage, $page, "usercp.php?action=attachments");
 	$bandwidth = get_friendly_size($bandwidth);
+
+	eval("\$delete_button = \"".$templates->get("delete_attachments_button")."\";");
 
 	if(!$attachments)
 	{
 		eval("\$attachments = \"".$templates->get("usercp_attachments_none")."\";");
 		$usagenote = '';
+		$delete_button = '';
 	}
 
 	$plugins->run_hooks("usercp_attachments_end");
@@ -3912,12 +4107,13 @@ if($mybb->input['action'] == "do_attachments" && $mybb->request_method == "post"
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("usercp_do_attachments_start");
 	require_once MYBB_ROOT."inc/functions_upload.php";
 	if(!isset($mybb->input['attachments']) || !is_array($mybb->input['attachments']))
 	{
 		error($lang->no_attachments_selected);
 	}
+
+	$plugins->run_hooks("usercp_do_attachments_start");
 
 	// Get unviewable forums
 	$f_perm_sql = '';
@@ -4003,13 +4199,15 @@ if(!$mybb->input['action'])
 	$avatar_username = htmlspecialchars_uni($mybb->user['username']);
 	eval("\$avatar = \"".$templates->get("usercp_currentavatar")."\";");
 
+	$mybb->user['email'] = htmlspecialchars_uni($mybb->user['email']);
+
 	$usergroup = htmlspecialchars_uni($groupscache[$mybb->user['usergroup']]['title']);
 	if($mybb->user['usergroup'] == 5 && $mybb->settings['regtype'] != "admin")
 	{
 		eval("\$usergroup .= \"".$templates->get("usercp_resendactivation")."\";");
 	}
 	// Make reputations row
-	$reputations = '';
+	$reputation = '';
 	if($mybb->usergroup['usereputationsystem'] == 1 && $mybb->settings['enablereputation'] == 1)
 	{
 		$reputation_link = get_reputation($mybb->user['reputation']);
@@ -4118,6 +4316,7 @@ if(!$mybb->input['action'])
 	$mybb->user['posts'] = my_number_format($mybb->user['postnum']);
 
 	// Build referral link
+	$referral_info = '';
 	if($mybb->settings['usereferrals'] == 1)
 	{
 		$referral_link = $lang->sprintf($lang->referral_link, $settings['bburl'], $mybb->user['uid']);
@@ -4143,33 +4342,48 @@ if(!$mybb->input['action'])
 	$query = $db->simple_select("threadsubscriptions", "sid", "uid = '".$mybb->user['uid']."'", array("limit" => 1));
 	if($db->num_rows($query))
 	{
-		$visible = "AND t.visible != 0";
-		if(is_moderator() == true)
+		$where = array(
+			"s.uid={$mybb->user['uid']}",
+			"t.lastposteruid!={$mybb->user['uid']}",
+			get_visible_where('t')
+		);
+
+		if($unviewable_forums = get_unviewable_forums(true))
 		{
-			$visible = '';
+			$where[] = "t.fid NOT IN ({$unviewable_forums})";
 		}
+	
+		if($inactive_forums = get_inactive_forums())
+		{
+			$where[] = "t.fid NOT IN ({$inactive_forums})";
+		}
+
+		$where = implode(' AND ', $where);
 
 		$query = $db->query("
 			SELECT s.*, t.*, t.username AS threadusername, u.username
 			FROM ".TABLE_PREFIX."threadsubscriptions s
 			LEFT JOIN ".TABLE_PREFIX."threads t ON (s.tid=t.tid)
 			LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid = t.uid)
-			WHERE s.uid='".$mybb->user['uid']."' {$visible}
+			WHERE {$where}
 			ORDER BY t.lastpost DESC
 			LIMIT 0, 10
 		");
 
+		$subscriptions = array();
 		$fpermissions = forum_permissions();
+
 		while($subscription = $db->fetch_array($query))
 		{
 			$forumpermissions = $fpermissions[$subscription['fid']];
-			if($forumpermissions['canview'] != 0 && $forumpermissions['canviewthreads'] != 0 && ($forumpermissions['canonlyviewownthreads'] == 0 || $subscription['uid'] == $mybb->user['uid']))
+
+			if(!isset($forumpermissions['canonlyviewownthreads']) || $forumpermissions['canonlyviewownthreads'] == 0 || $subscription['uid'] == $mybb->user['uid'])
 			{
 				$subscriptions[$subscription['tid']] = $subscription;
 			}
 		}
 
-		if(is_array($subscriptions))
+		if($subscriptions)
 		{
 			$tids = implode(",", array_keys($subscriptions));
 
@@ -4203,6 +4417,7 @@ if(!$mybb->input['action'])
 
 				$icon_cache = $cache->read("posticons");
 				$threadprefixes = build_prefixes();
+				$latest_subscribed_threads = '';
 
 				foreach($subscriptions as $thread)
 				{
@@ -4211,7 +4426,7 @@ if(!$mybb->input['action'])
 					$folder_label = '';
 					$gotounread = '';
 
-					if($thread['tid'])
+					if(!empty($thread['tid']))
 					{
 						$bgcolor = alt_trow();
 						$thread['subject'] = $parser->parse_badwords($thread['subject']);
@@ -4243,14 +4458,14 @@ if(!$mybb->input['action'])
 							$icon = "&nbsp;";
 						}
 
-						if($thread['doticon'])
+						if(!isset($thread['doticon']))
 						{
 							$folder = "dot_";
 							$folder_label .= $lang->icon_dot;
 						}
 
 						// Check to see which icon we display
-						if($thread['lastread'] && $thread['lastread'] < $thread['lastpost'])
+						if(!empty($thread['lastread']) && $thread['lastread'] < $thread['lastpost'])
 						{
 							$folder .= "new";
 							$folder_label .= $lang->icon_new;
@@ -4305,31 +4520,28 @@ if(!$mybb->input['action'])
 	}
 
 	// User's Latest Threads
+	$where = array(
+		"t.uid={$mybb->user['uid']}",
+		get_visible_where('t')
+	);
 
-	// Get unviewable forums
-	$f_perm_sql = '';
-	$unviewable_forums = get_unviewable_forums();
-	$inactiveforums = get_inactive_forums();
-	if($unviewable_forums)
+	if($unviewable_forums = get_unviewable_forums(true))
 	{
-		$f_perm_sql = " AND t.fid NOT IN ($unviewable_forums)";
-	}
-	if($inactiveforums)
-	{
-		$f_perm_sql .= " AND t.fid NOT IN ($inactiveforums)";
+		$where[] = "t.fid NOT IN ({$unviewable_forums})";
 	}
 
-	$visible = " AND t.visible != 0";
-	if(is_moderator() == true)
+	if($inactive_forums = get_inactive_forums())
 	{
-		$visible = '';
+		$where[] = "t.fid NOT IN ({$inactive_forums})";
 	}
+
+	$where = implode(' AND ', $where);
 
 	$query = $db->query("
 		SELECT t.*, t.username AS threadusername, u.username
 		FROM ".TABLE_PREFIX."threads t
 		LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid = t.uid)
-		WHERE t.uid='".$mybb->user['uid']."' AND t.firstpost != 0 AND t.visible >= 0 {$visible}{$f_perm_sql}
+		WHERE {$where}
 		ORDER BY t.lastpost DESC
 		LIMIT 0, 5
 	");
@@ -4339,17 +4551,7 @@ if(!$mybb->input['action'])
 	$fpermissions = forum_permissions();
 	while($thread = $db->fetch_array($query))
 	{
-		// Moderated, and not moderator?
-		if($thread['visible'] == 0 && is_moderator($thread['fid'], "canviewunapprove") === false)
-		{
-			continue;
-		}
-
-		$forumpermissions = $fpermissions[$thread['fid']];
-		if($forumpermissions['canview'] != 0 || $forumpermissions['canviewthreads'] != 0)
-		{
-			$threadcache[$thread['tid']] = $thread;
-		}
+		$threadcache[$thread['tid']] = $thread;
 	}
 
 	$latest_threads = '';
@@ -4399,8 +4601,8 @@ if(!$mybb->input['action'])
 		$latest_threads_threads = '';
 		foreach($threadcache as $thread)
 		{
-			$plugins->run_hooks("usercp_latest_threads_thread"); 
-			if($thread['tid'])
+			$plugins->run_hooks("usercp_latest_threads_thread");
+			if(!empty($thread['tid']))
 			{
 				$bgcolor = alt_trow();
 				$folder = '';
@@ -4461,7 +4663,7 @@ if(!$mybb->input['action'])
 				$cutoff = 0;
 				if($thread['lastpost'] > $cutoff)
 				{
-					if($thread['lastread'])
+					if(!empty($thread['lastread']))
 					{
 						$lastread = $thread['lastread'];
 					}
@@ -4481,7 +4683,7 @@ if(!$mybb->input['action'])
 				}
 
 				// Folder Icons
-				if($thread['doticon'])
+				if(!empty($thread['doticon']))
 				{
 					$folder = "dot_";
 					$folder_label .= $lang->icon_dot;

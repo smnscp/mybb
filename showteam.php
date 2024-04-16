@@ -119,7 +119,7 @@ if($mybb->settings['showgroupleaders'])
 		$leadlist = implode(",", $leadlist);
 
 		$query = $db->simple_select("usergroups", "gid, title, namestyle", "gid IN ($leadlist)");
-		unset($leadlist);
+		$leadlist = array();
 
 		while($leaded_group = $db->fetch_array($query))
 		{
@@ -148,6 +148,7 @@ while($user = $db->fetch_array($query))
 	// If this user is a moderator
 	if(isset($moderators[$user['uid']]))
 	{
+		$forumlist = '';
 		foreach($moderators[$user['uid']] as $forum)
 		{
 			if($forum_permissions[$forum['fid']]['canview'] == 1)
@@ -188,7 +189,7 @@ while($user = $db->fetch_array($query))
 		$group = $user['usergroup'];
 	}
 
-	if($usergroups[$group] && $group != 6)
+	if(isset($usergroups[$group]) && $group != 6)
 	{
 		$usergroups[$group]['user_list'][$user['uid']] = $user;
 	}
