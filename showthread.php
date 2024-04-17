@@ -1293,6 +1293,30 @@ if($mybb->input['action'] == "thread")
 			$thread['showstandardtools'] = true;
 		}
 
+		if($modpermissions['canopenclosethreads'])
+		{
+			if($thread['closed'])
+			{
+				$lang->open_close_thread = $lang->open_thread;
+			}
+			else
+			{
+				$lang->open_close_thread = $lang->close_thread;
+			}
+		}
+
+		if($modpermissions['canstickunstickthreads'])
+		{
+			if($thread['sticky'])
+			{
+				$lang->stick_unstick_thread = $lang->unstick_thread;
+			}
+			else
+			{
+				$lang->stick_unstick_thread = $lang->stick_thread;
+			}
+		}
+
 		// Only show mod menu if there's any options to show
 		if($thread['showstandardtools'] || $thread['showcustomthreadtools'])
 		{
