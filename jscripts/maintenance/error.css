@@ -40,3 +40,6 @@
 .mybb_error dd { width: 70%; }
 .mybb_error dt, .mybb_error dd { box-sizing: border-box; padding: 8px 12px; }
 .mybb_error dt:not(:last-of-type), .mybb_error dd:not(:last-of-type) { border-bottom: solid 1px var(--page-element-border-color); }
+
+.mybb_error .backtrace li::marker { color: var(--page-minor-fg-color); }
+.mybb_error .backtrace .location { font-size: 0.8em; color: var(--page-minor-fg-color); }

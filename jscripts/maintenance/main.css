@@ -90,9 +90,12 @@ ul, ol { margin-left: 25px; }
 
 dl { margin-top: 30px; margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: stretch; border: solid 1px var(--page-element-border-color); border-radius: 4px; font-size: 0.9em; }
 dt { width: 30%; background: var(--page-element-bg-color); text-align: right; }
-dd { width: 70%; }
+dd { width: 70%; word-wrap: break-word; }
 dt, dd { box-sizing: border-box; padding: 8px 12px; }
 dt:not(:last-of-type), dd:not(:last-of-type) { border-bottom: solid 1px var(--page-element-border-color); }
+
+.backtrace li::marker { color: var(--page-minor-fg-color); }
+.backtrace .location { font-size: 0.8em; color: var(--page-minor-fg-color); }
 
 footer { padding: 20px; font-size: 0.8em; text-align: right; color: var(--footer-fg-color); }
 footer .powered-by-phrase { transition: opacity 1s; }

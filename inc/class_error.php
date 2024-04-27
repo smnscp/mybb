@@ -588,7 +588,7 @@ class errorHandler {
 
 					if($parser_exists)
 					{
-						$data['Code'] = $parser->mycode_parse_php($data['Code'], true);
+						$data['Code'] = '<pre><code>' . htmlspecialchars_uni($data['Code']) . '</code></pre>';
 					}
 					else
 					{
@@ -775,12 +775,7 @@ class errorHandler {
 		{
 			if($html)
 			{
-				$backtrace = "<table style=\"width: 100%; margin: 10px 0; border: 1px solid #aaa; border-collapse: collapse; border-bottom: 0;\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">\n";
-				$backtrace .= "<thead><tr>\n";
-				$backtrace .= "<th style=\"border-bottom: 1px solid #aaa; background: #ccc; padding: 4px; text-align: left; font-size: 11px;\">File</th>\n";
-				$backtrace .= "<th style=\"border-bottom: 1px solid #aaa; background: #ccc; padding: 4px; text-align: left; font-size: 11px;\">Line</th>\n";
-				$backtrace .= "<th style=\"border-bottom: 1px solid #aaa; background: #ccc; padding: 4px; text-align: left; font-size: 11px;\">Function</th>\n";
-				$backtrace .= "</tr></thead>\n<tbody>\n";
+				$backtrace = '<ol reversed class="backtrace">';
 			}
 
 			$i = 0;
@@ -794,15 +789,24 @@ class errorHandler {
 
 				if($html)
 				{
-					$backtrace .= "<tr>\n";
-					$backtrace .= "<td style=\"font-size: 11px; padding: 4px; border-bottom: 1px solid #ccc;\">{$call['file']}</td>\n";
-					$backtrace .= "<td style=\"font-size: 11px; padding: 4px; border-bottom: 1px solid #ccc;\">{$call['line']}</td>\n";
-					$backtrace .= "<td style=\"font-size: 11px; padding: 4px; border-bottom: 1px solid #ccc;\">{$call['function']}</td>\n";
-					$backtrace .= "</tr>\n";
+					$function = htmlspecialchars_uni($call['function']);
+					$file = htmlspecialchars_uni($call['file']);
+
+					$backtrace .= <<<HTML
+						<li>
+							<p class="function">{$function}</p>
+							<p class="location">
+								<span class="file">{$file}</span><span class="file">:{$call['line']}</span>
+							</p>
+						</li>
+						HTML;
 				}
 				else
 				{
-					$backtrace .= "#{$i}  {$call['function']}() called at [{$call['file']}:{$call['line']}]\n";
+					$backtrace .= <<<TEXT
+						#{$i}  {$call['function']}
+						{$call['file']}:{$call['line']}]\n\n
+						TEXT;
 				}
 
 				$i++;
@@ -810,7 +814,7 @@ class errorHandler {
 
 			if($html)
 			{
-				$backtrace .= "</tbody></table>\n";
+				$backtrace .= '</ol>';
 			}
 		}
 		return $backtrace;
