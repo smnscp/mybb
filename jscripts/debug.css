@@ -68,7 +68,7 @@ ul li:not(:last-child) { border-bottom: solid 1px var(--bd-color-1); }
 dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
 dl > div { padding: 10px; border: solid 1px var(--bd-color-1); border-radius: 4px; }
 dt { margin-bottom: 6px; font-size: 0.8em; color: var(--fg-color-3); }
-dd { margin: 0; font-size: 0.9em; }
+dd { margin: 0; font-size: 0.9em; word-break: break-word; }
 
 table { width: 100%; border-collapse: collapse; }
 table :is(th, td) { border: solid 1px var(--bd-color-1); font-size: 0.95em; }
