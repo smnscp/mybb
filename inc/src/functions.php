@@ -10,11 +10,12 @@ use Twig\Extension\ExtensionInterface;
 /**
  * Get an instance of a type fom the IoC container.
  *
- * @param string|null $className The name of the type to resolve.
+ * @template T
+ * @param class-string<T>|null $className The name of the type to resolve.
  * If this is null or an empty string, the container itself will be returned.
  * @param array $parameters An optional array of parameters to pass whilst resolving an instance.
  *
- * @return \MyBB\Application|mixed
+ * @return ($className is null ? \MyBB\Application : T)
  */
 function app(?string $className = null, array $parameters = [])
 {

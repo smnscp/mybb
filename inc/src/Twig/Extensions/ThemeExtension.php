@@ -26,7 +26,7 @@ class ThemeExtension extends AbstractExtension implements GlobalsInterface
     /**
      * @var string $altRowState
      */
-    private $altRowState;
+    private string $altRowState;
 
     /**
      * Create a new instance of the ThemeExtension.
@@ -84,6 +84,7 @@ class ThemeExtension extends AbstractExtension implements GlobalsInterface
      * @param bool $reset Whether to reset the row state to `trow1`.
      *
      * @return string `trow1` or `trow2` depending on the previous call.
+     * @deprecated Use CSS pseudo-classes instead.
      */
     public function altTrow(bool $reset = false) : string
     {
