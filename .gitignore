@@ -29,6 +29,7 @@ error.log
 .history
 .idea
 .editorconfig
+.phpunit.cache
 
 # Generic OS stuff
 .DS_Store
